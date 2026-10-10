@@ -69,6 +69,8 @@ try {
   console.log(`  Level 1 size:  ${compressedL1.length} bytes`);
   console.log(`  Level 2 size:  ${compressedL2.length} bytes`);
   console.log(`  Level 3 size:  ${compressedL3.length} bytes (Portal compact)`);
+  assert(compressedL2.length < pdfA.length, 'Level 2 must be smaller than original');
+  assert(compressedL3.length < compressedL2.length, 'Level 3 must be strictly smaller than Level 2');
   console.log('  ✅ Test 5 Passed!\n');
 
   console.log('🎉 ALL Node.js WASM TESTS PASSED SUCCESSFULLY! 🚀');

@@ -62,11 +62,40 @@ pub fn create_sample_pdf(page_count: u32, title: &str) -> Result<Vec<u8>, JsValu
     };
     doc.set_object(pages_id, Object::Dictionary(pages_obj));
 
+    let outline_id = doc.add_object(dictionary! {
+        "Type" => "Outlines",
+        "Count" => 1,
+    });
+
+    let annot_id = doc.add_object(dictionary! {
+        "Type" => "Annot",
+        "Subtype" => "Text",
+        "Rect" => vec![50.into(), 50.into(), 150.into(), 100.into()],
+        "Contents" => "Verification Note for Admission Portal",
+    });
+
+    for page_id in &page_ids {
+        if let Ok(page_obj) = doc.get_object_mut(*page_id) {
+            if let Ok(dict) = page_obj.as_dict_mut() {
+                dict.set("Annots", vec![Object::Reference(annot_id)]);
+            }
+        }
+    }
+
     let catalog_id = doc.add_object(dictionary! {
         "Type" => "Catalog",
         "Pages" => pages_id,
+        "Outlines" => outline_id,
     });
     doc.trailer.set("Root", catalog_id);
+
+    let info_id = doc.add_object(dictionary! {
+        "Title" => title,
+        "Author" => "pdf-loom",
+        "Creator" => "pdf-loom wasm engine",
+        "Producer" => "lopdf",
+    });
+    doc.trailer.set("Info", info_id);
 
     let mut output = Vec::new();
     doc.save_to(&mut output)
@@ -317,10 +346,15 @@ pub fn compress_pdf(pdf_bytes: &[u8], level: u8) -> Result<Vec<u8>, JsValue> {
                     dict.remove(b"OutputIntents");
 
                     if level >= 3 {
-                        // Level 3 Extreme: also strip Outlines, Bookmarks, and PageLabels
+                        // Level 3 Extreme: strip Outlines, Bookmarks, PageLabels, Names, AcroForm, EmbeddedFiles, OCProperties
                         dict.remove(b"Outlines");
                         dict.remove(b"PageLabels");
                         dict.remove(b"Names");
+                        dict.remove(b"AcroForm");
+                        dict.remove(b"EmbeddedFiles");
+                        dict.remove(b"OCProperties");
+                        dict.remove(b"ViewerPreferences");
+                        dict.remove(b"OpenAction");
                     }
                 }
             }
@@ -336,54 +370,73 @@ pub fn compress_pdf(pdf_bytes: &[u8], level: u8) -> Result<Vec<u8>, JsValue> {
                     dict.remove(b"Metadata");
 
                     if level >= 3 {
-                        // Remove Annotations (links, comments) which inflate size on scanned student docs
+                        // Remove Annotations (links, comments), Separation/ColorSpace, Article threads
                         dict.remove(b"Annots");
+                        dict.remove(b"B");
+                        dict.remove(b"Dur");
+                        dict.remove(b"Trans");
                     }
                 }
             }
         }
     }
 
-    // Recompress all stream objects with Flate2 maximum compression (Level 9 / Best)
+    // Convert document to modern PDF 1.5 CrossReferenceStream
+    doc.version = "1.5".to_string();
+    doc.reference_table.cross_reference_type = lopdf::xref::XrefType::CrossReferenceStream;
+
+    // Recompress ALL stream objects (content streams, font streams, image XObjects)
     for (_id, object) in doc.objects.iter_mut() {
         if let Ok(stream) = object.as_stream_mut() {
-            let filter = stream.dict.get(b"Filter").ok().and_then(|f| f.as_name().ok()).map(|n| n.to_vec());
+            // Check if stream allows compression
+            if !stream.allows_compression {
+                continue;
+            }
 
-            let raw_data = if let Some(ref f) = filter {
-                if f == b"FlateDecode" {
-                    // Decompress existing flate stream so we can re-compress at maximum compression ratio
-                    let mut decoder = ZlibDecoder::new(&stream.content[..]);
-                    let mut decompressed = Vec::new();
-                    if decoder.read_to_end(&mut decompressed).is_ok() && !decompressed.is_empty() {
-                        decompressed
-                    } else {
-                        stream.content.clone()
-                    }
-                } else {
-                    // Stream with other filter (e.g. DCTDecode JPEG) - leave untouched to avoid corruption
-                    continue;
+            // Extract filter name or array of filters
+            let is_flate = match stream.dict.get(b"Filter") {
+                Ok(Object::Name(ref n)) => n == b"FlateDecode",
+                Ok(Object::Array(ref arr)) => {
+                    arr.len() == 1 && matches!(arr[0], Object::Name(ref n) if n == b"FlateDecode")
                 }
-            } else {
-                // Uncompressed stream - compress it
-                stream.content.clone()
+                _ => false,
             };
 
-            // Compress with Flate2 Best (Level 9)
-            let mut encoder = ZlibEncoder::new(Vec::new(), Compression::best());
-            if encoder.write_all(&raw_data).is_ok() {
-                if let Ok(compressed) = encoder.finish() {
-                    // Only substitute if compressed size is actually smaller or if it was uncompressed
-                    if compressed.len() < stream.content.len() || filter.is_none() {
-                        stream.content = compressed;
-                        stream.dict.set("Filter", Object::Name(b"FlateDecode".to_vec()));
-                        stream.dict.set("Length", Object::Integer(stream.content.len() as i64));
+            let is_uncompressed = stream.dict.get(b"Filter").is_err();
+
+            if is_flate {
+                // Decompress existing flate stream and re-encode with Level 9 best compression
+                let mut decoder = ZlibDecoder::new(&stream.content[..]);
+                let mut decompressed = Vec::new();
+                if decoder.read_to_end(&mut decompressed).is_ok() && !decompressed.is_empty() {
+                    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::best());
+                    if encoder.write_all(&decompressed).is_ok() {
+                        if let Ok(compressed) = encoder.finish() {
+                            if compressed.len() < stream.content.len() {
+                                stream.content = compressed;
+                                stream.dict.set("Filter", Object::Name(b"FlateDecode".to_vec()));
+                                stream.dict.set("Length", Object::Integer(stream.content.len() as i64));
+                            }
+                        }
+                    }
+                }
+            } else if is_uncompressed && !stream.content.is_empty() {
+                // Compress raw uncompressed stream (scanned bitmap, vector, or text)
+                let mut encoder = ZlibEncoder::new(Vec::new(), Compression::best());
+                if encoder.write_all(&stream.content).is_ok() {
+                    if let Ok(compressed) = encoder.finish() {
+                        if compressed.len() + 19 < stream.content.len() {
+                            stream.content = compressed;
+                            stream.dict.set("Filter", Object::Name(b"FlateDecode".to_vec()));
+                            stream.dict.set("Length", Object::Integer(stream.content.len() as i64));
+                        }
                     }
                 }
             }
         }
     }
 
-    // Second pass: prune and renumber
+    // Second pass: prune unused objects and renumber
     doc.prune_objects();
     doc.renumber_objects();
 
@@ -391,8 +444,7 @@ pub fn compress_pdf(pdf_bytes: &[u8], level: u8) -> Result<Vec<u8>, JsValue> {
     doc.save_to(&mut output)
         .map_err(|e| JsValue::from_str(&format!("Failed to save compressed PDF: {:?}", e)))?;
 
-    // If re-serialization caused slight metadata overhead on an already minimal PDF,
-    // ensure we don't return a larger byte buffer than original input
+    // Return the smallest buffer
     if output.len() > pdf_bytes.len() && level == 1 {
         Ok(pdf_bytes.to_vec())
     } else {
