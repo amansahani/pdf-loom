@@ -3,10 +3,15 @@
 > **Blazing fast, 100% client-side PDF manipulation engine powered by Rust & WebAssembly.**
 
 [![npm version](https://img.shields.io/npm/v/pdf-loom.svg)](https://www.npmjs.com/package/pdf-loom)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![GitHub](https://img.shields.io/badge/GitHub-amansahani%2Fpdf--loom-blue?logo=github)](https://github.com/amansahani/pdf-loom)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Bundle Size](https://img.shields.io/badge/bundle%20size-~120%20kB%20gzipped-brightgreen)](#performance)
 
 `pdf-loom` brings core PDF manipulation tasks (merge, split/extract, rotate, inspect, and sample generation) directly to the browser with zero server roundtrips, zero external native dependencies, and unmatched privacy.
+
+- **NPM Package**: [https://www.npmjs.com/package/pdf-loom](https://www.npmjs.com/package/pdf-loom)
+- **GitHub Repository**: [https://github.com/amansahani/pdf-loom](https://github.com/amansahani/pdf-loom)
+- **Issue Tracker**: [https://github.com/amansahani/pdf-loom/issues](https://github.com/amansahani/pdf-loom/issues)
 
 ---
 
