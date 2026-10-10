@@ -121,7 +121,22 @@ async function rotatePdfPages(file: File, pageNumbers: number[], degrees: number
 
 ---
 
-### D. Read PDF Metadata (Page Count, Encryption, Version)
+### D. Compress PDF (Strict Portal Limits)
+
+```typescript
+import { compress_pdf } from "pdf-loom";
+
+// Compress PDF with levels: 1 = Light, 2 = Medium, 3 = Extreme (Portal compact)
+async function compressDocument(file: File, level: number = 3) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const compressedBytes = compress_pdf(bytes, level);
+  return new Blob([compressedBytes], { type: "application/pdf" });
+}
+```
+
+---
+
+### E. Read PDF Metadata (Page Count, Encryption, Version)
 
 ```typescript
 import { get_pdf_info } from "pdf-loom";
@@ -136,7 +151,7 @@ async function inspectPdf(file: File) {
 
 ---
 
-### E. Generate Sample / Template PDF
+### F. Generate Sample / Template PDF
 
 ```typescript
 import { create_sample_pdf } from "pdf-loom";
@@ -156,5 +171,6 @@ function generateTestDocument(pageCount: number, title: string) {
 | `merge_pdfs` | `(pdf_buffers: Uint8Array[]) => Uint8Array` | Merges multiple PDF byte arrays in sequential order. |
 | `extract_pages` | `(pdf_bytes: Uint8Array, page_numbers: Uint32Array) => Uint8Array` | Extracts selected 1-based page indices into a new PDF. |
 | `rotate_pages` | `(pdf_bytes: Uint8Array, page_numbers: Uint32Array, degrees: number) => Uint8Array` | Rotates specified pages clockwise (90, 180, 270). |
+| `compress_pdf` | `(pdf_bytes: Uint8Array, level: number) => Uint8Array` | Recompresses streams & strips non-essential metadata (Level 1, 2, 3). |
 | `get_pdf_info` | `(pdf_bytes: Uint8Array) => { page_count, version, is_encrypted }` | Inspects document header, page count, and encryption state. |
 | `create_sample_pdf` | `(page_count: number, title: string) => Uint8Array` | Creates a valid minimalist test PDF with title and page numbers. |

@@ -6,7 +6,8 @@ const {
   get_pdf_info, 
   merge_pdfs, 
   extract_pages, 
-  rotate_pages 
+  rotate_pages,
+  compress_pdf
 } = require('./pkg-node/pdf_loom.js');
 const assert = require('assert');
 
@@ -52,6 +53,23 @@ try {
   const rotatedInfo = get_pdf_info(rotated);
   assert.strictEqual(rotatedInfo.page_count, 3, 'Page count should remain 3 after rotation');
   console.log('  ✅ Test 4 Passed!\n');
+
+  // Test 5: compress_pdf (Multi-level compression)
+  console.log('Test 5: compress_pdf (Levels 1, 2, 3)');
+  const compressedL1 = compress_pdf(pdfA, 1);
+  const compressedL2 = compress_pdf(pdfA, 2);
+  const compressedL3 = compress_pdf(pdfA, 3);
+  assert(compressedL1 instanceof Uint8Array, 'Compressed output must be Uint8Array');
+  assert(compressedL2 instanceof Uint8Array, 'Compressed output must be Uint8Array');
+  assert(compressedL3 instanceof Uint8Array, 'Compressed output must be Uint8Array');
+
+  const compInfo3 = get_pdf_info(compressedL3);
+  assert.strictEqual(compInfo3.page_count, 3, 'Compressed PDF must retain all pages');
+  console.log(`  Original size: ${pdfA.length} bytes`);
+  console.log(`  Level 1 size:  ${compressedL1.length} bytes`);
+  console.log(`  Level 2 size:  ${compressedL2.length} bytes`);
+  console.log(`  Level 3 size:  ${compressedL3.length} bytes (Portal compact)`);
+  console.log('  ✅ Test 5 Passed!\n');
 
   console.log('🎉 ALL Node.js WASM TESTS PASSED SUCCESSFULLY! 🚀');
 } catch (error) {

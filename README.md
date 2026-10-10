@@ -83,7 +83,25 @@ const pagesToRotate = new Uint32Array([1, 2]);
 const rotatedPdfBytes = rotate_pages(pdfBytes, pagesToRotate, 90);
 ```
 
-### 4. Inspect PDF Metadata
+### 4. Compress PDF (Portal Size Limits)
+
+Designed specifically for university, exam, and government application portals (e.g., UPSC, SSC, JEE, GATE, state admission boards requiring strict `<100KB` / `<200KB` PDF sizes):
+
+```typescript
+import { compress_pdf } from "pdf-loom";
+
+const pdfBytes = new Uint8Array(await file.arrayBuffer());
+
+// Level 1: Light (Lossless Deflate level 9 + dead object pruning)
+// Level 2: Medium (Aggressive metadata, thumbnail, & piece info stripping + best compression)
+// Level 3: Extreme (Portal compact: strips annotations, bookmarks, outlines, piece info, structural tree roots)
+const compressedBytes = compress_pdf(pdfBytes, 3);
+
+// Download compressed file
+const blob = new Blob([compressedBytes], { type: "application/pdf" });
+```
+
+### 5. Inspect PDF Metadata
 
 ```typescript
 import { get_pdf_info } from "pdf-loom";
@@ -98,7 +116,7 @@ console.log(info);
 // }
 ```
 
-### 5. Generate Test PDF
+### 6. Generate Test PDF
 
 ```typescript
 import { create_sample_pdf } from "pdf-loom";
@@ -207,6 +225,19 @@ Rotates target pages by the specified angle.
   - `page_numbers`: `Uint32Array` containing 1-based page indices.
   - `degrees`: `number` (typically `90`, `180`, or `270`).
 - **Returns**: `Uint8Array` of the rotated PDF.
+
+---
+
+### `compress_pdf(pdf_bytes: Uint8Array, level: number): Uint8Array`
+Recompresses streams and strips unreferenced metadata to minimize file size.
+
+- **Parameters**:
+  - `pdf_bytes`: Source PDF byte array.
+  - `level`: `number`
+    - `1`: **Standard/Light** - Flate2 Deflate Level 9 lossless compression and dead object pruning.
+    - `2`: **High** - Prunes document metadata, piece info, structural tree roots, and thumbnails.
+    - `3`: **Extreme / Portal Compact** - Tailored for Indian college/job portal restrictions; strips outlines, annotations, bookmarks, piece info, and applies maximum stream re-encoding.
+- **Returns**: `Uint8Array` containing the compressed PDF binary.
 
 ---
 
